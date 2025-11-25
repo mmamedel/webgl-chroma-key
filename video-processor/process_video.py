@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-Chroma Key Video Processor - Phase 4
+Chroma Key Video Processor - Phase 5
 Uses PyOpenGL to process video with WebGL shaders
-Supports: Transparency, Tolerance, Highlight, Shadow, Pedestal, Spill Suppression
+Supports: Transparency, Tolerance, Highlight, Shadow, Pedestal, Spill Suppression, Contrast, Mid Point, Choke, Soften
 """
 
 import sys
@@ -100,6 +100,10 @@ class ChromaKeyProcessor:
             'u_shadow': glGetUniformLocation(self.program, 'u_shadow'),
             'u_pedestal': glGetUniformLocation(self.program, 'u_pedestal'),
             'u_spillSuppression': glGetUniformLocation(self.program, 'u_spillSuppression'),
+            'u_contrast': glGetUniformLocation(self.program, 'u_contrast'),
+            'u_midPoint': glGetUniformLocation(self.program, 'u_midPoint'),
+            'u_choke': glGetUniformLocation(self.program, 'u_choke'),
+            'u_soften': glGetUniformLocation(self.program, 'u_soften'),
             'u_outputMode': glGetUniformLocation(self.program, 'u_outputMode'),
         }
         
@@ -199,7 +203,8 @@ class ChromaKeyProcessor:
     
     def render_frame(self, key_color, transparency, tolerance, 
                      highlight=50.0, shadow=50.0, pedestal=0.0, 
-                     spill_suppression=30.0, output_mode=0):
+                     spill_suppression=30.0, contrast=0.0, mid_point=50.0,
+                     choke=0.0, soften=0.0, output_mode=0):
         """Render a frame with current parameters"""
         # Clear with transparency (alpha = 0)
         glClearColor(0.0, 0.0, 0.0, 0.0)
@@ -215,6 +220,10 @@ class ChromaKeyProcessor:
         glUniform1f(self.uniforms['u_shadow'], shadow)
         glUniform1f(self.uniforms['u_pedestal'], pedestal)
         glUniform1f(self.uniforms['u_spillSuppression'], spill_suppression)
+        glUniform1f(self.uniforms['u_contrast'], contrast)
+        glUniform1f(self.uniforms['u_midPoint'], mid_point)
+        glUniform1f(self.uniforms['u_choke'], choke)
+        glUniform1f(self.uniforms['u_soften'], soften)
         glUniform1i(self.uniforms['u_outputMode'], output_mode)
         
         # Bind video texture
@@ -258,10 +267,14 @@ def process_video(input_path, output_path,
                   shadow=50.0,
                   pedestal=0.0,
                   spill_suppression=30.0,
+                  contrast=0.0,
+                  mid_point=50.0,
+                  choke=0.0,
+                  soften=0.0,
                   output_mode=0,
                   keep_frames=False):
     """
-    Process video with chroma key (Phase 4) - Outputs ProRes 4444 with transparency
+    Process video with chroma key (Phase 5) - Outputs ProRes 4444 with transparency
     
     Args:
         input_path: Input video file
@@ -273,6 +286,10 @@ def process_video(input_path, output_path,
         shadow: 0-100, controls dark area transparency
         pedestal: 0-100, shifts entire alpha range
         spill_suppression: 0-100, removes color spill
+        contrast: 0-200, pushes mid-tones toward black/white
+        mid_point: 0-100, pivot point for contrast
+        choke: -20 to 20, negative=expand, positive=shrink matte
+        soften: 0-20, blur amount for edges
         output_mode: 0=Composite (with transparency), 1=Alpha Channel, 2=Status
         keep_frames: If True, preserve PNG frames for inspection
     """
@@ -295,6 +312,8 @@ def process_video(input_path, output_path,
     print(f"Transparency: {transparency}, Tolerance: {tolerance}")
     print(f"Highlight: {highlight}, Shadow: {shadow}, Pedestal: {pedestal}")
     print(f"Spill Suppression: {spill_suppression}")
+    print(f"Contrast: {contrast}, Mid Point: {mid_point}")
+    print(f"Choke: {choke}, Soften: {soften}")
     output_mode_names = {0: 'Composite + Alpha', 1: 'Alpha Channel', 2: 'Status'}
     print(f"Output Mode: {output_mode_names.get(output_mode, 'Unknown')}")
     
@@ -330,7 +349,7 @@ def process_video(input_path, output_path,
     
     processor.load_shaders(
         shader_dir / 'basic.vert',
-        shader_dir / 'phase4.frag'
+        shader_dir / 'phase5.frag'
     )
     
     perf_stats['init_time'] = time.time() - init_start
@@ -358,6 +377,7 @@ def process_video(input_path, output_path,
             output_frame = processor.render_frame(
                 key_color, transparency, tolerance,
                 highlight, shadow, pedestal, spill_suppression,
+                contrast, mid_point, choke, soften,
                 output_mode
             )
             
@@ -505,6 +525,14 @@ def main():
                         help='Pedestal parameter (0-100), default: 0')
     parser.add_argument('--spill-suppression', type=float, default=30.0,
                         help='Spill suppression (0-100), default: 30')
+    parser.add_argument('--contrast', type=float, default=0.0,
+                        help='Contrast (0-200), pushes mid-tones, default: 0')
+    parser.add_argument('--mid-point', type=float, default=50.0,
+                        help='Mid point (0-100), pivot for contrast, default: 50')
+    parser.add_argument('--choke', type=float, default=0.0,
+                        help='Choke (-20 to 20), negative=expand, positive=shrink, default: 0')
+    parser.add_argument('--soften', type=float, default=0.0,
+                        help='Soften (0-20), blur amount for edges, default: 0')
     parser.add_argument('--output-mode', type=int, choices=[0, 1, 2], default=0,
                         help='Output mode: 0=Composite, 1=Alpha Channel, 2=Status, default: 0')
     parser.add_argument('--keep-frames', action='store_true',
@@ -522,6 +550,10 @@ def main():
         shadow=args.shadow,
         pedestal=args.pedestal,
         spill_suppression=args.spill_suppression,
+        contrast=args.contrast,
+        mid_point=args.mid_point,
+        choke=args.choke,
+        soften=args.soften,
         output_mode=args.output_mode,
         keep_frames=args.keep_frames
     )

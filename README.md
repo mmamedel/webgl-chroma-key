@@ -74,9 +74,7 @@ chroma-key/
 │           └── +page.svelte   # Phase 1: Core parameters
 ├── static/
 │   ├── bg.jpg                   # Background image (original)
-│   ├── blue.jpg                 # Solid blue background
-│   ├── green-screen-sample.webm # Test video (short)
-│   └── 030_TEACHING-1_Title_*.mp4 # Full sign language video
+│   └── blue.jpg                 # Solid blue background
 ├── video-processor/
 │   ├── process_video.py      # Python video processor (PyOpenGL)
 │   ├── test_setup.py         # Verify Python dependencies
