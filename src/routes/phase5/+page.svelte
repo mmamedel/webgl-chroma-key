@@ -246,13 +246,9 @@
   async function useEyeDropper() {
     if (!video || !videoSrc) return;
 
-    // Manually render original video frame
-    if (renderOriginalFrame) {
-      renderOriginalFrame();
-    }
-
-    // Set picking mode for hint display
+    // Set picking mode for hint display and force one render with passthrough shader
     isPickingFromVideo = true;
+    shouldRender = true;
 
     // Check if EyeDropper API is supported
     if (!("EyeDropper" in window)) {
@@ -273,6 +269,8 @@
       // User cancelled
     } finally {
       isPickingFromVideo = false;
+      // Render once more to restore the keyed result
+      shouldRender = true;
     }
   }
 
