@@ -1,0 +1,13 @@
+node_modules
+.svelte-kit
+
+# Python
+video-processor/venv/
+video-processor/__pycache__/
+*.pyc
+*.pyo
+
+# Output videos
+*.mp4
+output.mp4
+output/
