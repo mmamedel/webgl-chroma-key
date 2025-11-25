@@ -49,6 +49,11 @@
   // Function to render original frame (assigned in onMount)
   let renderOriginalFrame: (() => void) | null = null;
 
+  // Render loop optimization
+  let animationFrameId: number | null = null;
+  let lastRenderedTime = -1;
+  let shouldRender = true;
+
   // WebGL context and program
   let gl = $state<WebGLRenderingContext | null>(null);
   let program = $state<WebGLProgram | null>(null);
@@ -287,6 +292,31 @@
     }
   });
 
+  // Trigger re-render when parameters change (for paused video)
+  $effect(() => {
+    // Track all parameters that affect rendering
+    const _ =
+      transparency +
+      tolerance +
+      highlight +
+      shadow +
+      pedestal +
+      spillSuppression +
+      contrast +
+      midPoint +
+      choke +
+      soften +
+      outputMode +
+      keyColor.r +
+      keyColor.g +
+      keyColor.b;
+
+    // Request re-render if video is paused
+    if (video && video.paused) {
+      shouldRender = true;
+    }
+  });
+
   onMount(() => {
     gl = canvas.getContext("webgl", { alpha: true, premultipliedAlpha: false });
     if (!gl) {
@@ -416,74 +446,94 @@
       }
     };
 
-    // Render loop
+    // Render loop with optimization
     function render() {
       if (!gl || !program) return;
 
       if (video && video.readyState >= video.HAVE_CURRENT_DATA) {
-        if (
-          canvas.width !== video.videoWidth ||
-          canvas.height !== video.videoHeight
-        ) {
-          canvas.width = video.videoWidth;
-          canvas.height = video.videoHeight;
+        // Check if we need to render
+        const currentVideoTime = video.currentTime;
+        const hasTimeChanged = currentVideoTime !== lastRenderedTime;
+        const needsRender = !video.paused || hasTimeChanged || shouldRender;
+
+        if (needsRender) {
+          if (
+            canvas.width !== video.videoWidth ||
+            canvas.height !== video.videoHeight
+          ) {
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+          }
+
+          gl.viewport(0, 0, canvas.width, canvas.height);
+          updateVideoTexture(gl, videoTexture, video);
+
+          gl.clearColor(0, 0, 0, 0);
+          gl.clear(gl.COLOR_BUFFER_BIT);
+
+          // Use passthrough shader when picking colors, otherwise use chroma key shader
+          const activeProgram = isPickingFromVideo
+            ? passthroughProgram
+            : program;
+          gl.useProgram(activeProgram);
+
+          // Set up attributes
+          gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+          gl.enableVertexAttribArray(positionLocation);
+          gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 0, 0);
+
+          gl.bindBuffer(gl.ARRAY_BUFFER, texCoordBuffer);
+          gl.enableVertexAttribArray(texCoordLocation);
+          gl.vertexAttribPointer(texCoordLocation, 2, gl.FLOAT, false, 0, 0);
+
+          // Bind video texture
+          gl.activeTexture(gl.TEXTURE0);
+          gl.bindTexture(gl.TEXTURE_2D, videoTexture);
+
+          if (isPickingFromVideo && passthroughProgram) {
+            // For passthrough shader, just set the video texture uniform
+            const videoLoc = gl.getUniformLocation(
+              passthroughProgram,
+              "u_video"
+            );
+            gl.uniform1i(videoLoc, 0);
+          } else {
+            // Set all uniforms for chroma key shader
+            gl.uniform2f(uniforms.resolution, canvas.width, canvas.height);
+            gl.uniform3f(uniforms.keyColor, keyColor.r, keyColor.g, keyColor.b);
+            gl.uniform1f(uniforms.transparency, transparency);
+            gl.uniform1f(uniforms.tolerance, tolerance);
+            gl.uniform1i(uniforms.outputMode, outputMode);
+            gl.uniform1f(uniforms.highlight, highlight);
+            gl.uniform1f(uniforms.shadow, shadow);
+            gl.uniform1f(uniforms.pedestal, pedestal);
+            gl.uniform1f(uniforms.spillSuppression, spillSuppression);
+            gl.uniform1f(uniforms.contrast, contrast);
+            gl.uniform1f(uniforms.midPoint, midPoint);
+            gl.uniform1f(uniforms.choke, choke);
+            gl.uniform1f(uniforms.soften, soften);
+            gl.uniform1i(uniforms.video, 0);
+          }
+
+          gl.drawArrays(gl.TRIANGLES, 0, 6);
+
+          lastRenderedTime = currentVideoTime;
+          shouldRender = false;
         }
-
-        gl.viewport(0, 0, canvas.width, canvas.height);
-        updateVideoTexture(gl, videoTexture, video);
-
-        gl.clearColor(0, 0, 0, 0);
-        gl.clear(gl.COLOR_BUFFER_BIT);
-
-        // Use passthrough shader when picking colors, otherwise use chroma key shader
-        const activeProgram = isPickingFromVideo ? passthroughProgram : program;
-        gl.useProgram(activeProgram);
-
-        // Set up attributes
-        gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
-        gl.enableVertexAttribArray(positionLocation);
-        gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 0, 0);
-
-        gl.bindBuffer(gl.ARRAY_BUFFER, texCoordBuffer);
-        gl.enableVertexAttribArray(texCoordLocation);
-        gl.vertexAttribPointer(texCoordLocation, 2, gl.FLOAT, false, 0, 0);
-
-        // Bind video texture
-        gl.activeTexture(gl.TEXTURE0);
-        gl.bindTexture(gl.TEXTURE_2D, videoTexture);
-
-        if (isPickingFromVideo && passthroughProgram) {
-          // For passthrough shader, just set the video texture uniform
-          const videoLoc = gl.getUniformLocation(passthroughProgram, "u_video");
-          gl.uniform1i(videoLoc, 0);
-        } else {
-          // Set all uniforms for chroma key shader
-          gl.uniform2f(uniforms.resolution, canvas.width, canvas.height);
-          gl.uniform3f(uniforms.keyColor, keyColor.r, keyColor.g, keyColor.b);
-          gl.uniform1f(uniforms.transparency, transparency);
-          gl.uniform1f(uniforms.tolerance, tolerance);
-          gl.uniform1i(uniforms.outputMode, outputMode);
-          gl.uniform1f(uniforms.highlight, highlight);
-          gl.uniform1f(uniforms.shadow, shadow);
-          gl.uniform1f(uniforms.pedestal, pedestal);
-          gl.uniform1f(uniforms.spillSuppression, spillSuppression);
-          gl.uniform1f(uniforms.contrast, contrast);
-          gl.uniform1f(uniforms.midPoint, midPoint);
-          gl.uniform1f(uniforms.choke, choke);
-          gl.uniform1f(uniforms.soften, soften);
-          gl.uniform1i(uniforms.video, 0);
-        }
-
-        gl.drawArrays(gl.TRIANGLES, 0, 6);
       }
 
-      requestAnimationFrame(render);
+      animationFrameId = requestAnimationFrame(render);
     }
 
     render();
   });
 
   onDestroy(() => {
+    // Clean up animation frame
+    if (animationFrameId !== null) {
+      cancelAnimationFrame(animationFrameId);
+    }
+
     // Clean up blob URL if it exists
     if (videoSrc && videoSrc.startsWith("blob:")) {
       URL.revokeObjectURL(videoSrc);
@@ -495,6 +545,7 @@
     if (video.paused) {
       video.play();
       isPlaying = true;
+      shouldRender = true; // Resume rendering
     } else {
       video.pause();
       isPlaying = false;
