@@ -595,6 +595,7 @@
   <div class="header">
     <h1>Phase 5: Matte Cleanup</h1>
     <div class="nav-links">
+      <a href="/phase6" class="back-link">Phase 6 (WebGPU) →</a>
       <a href="/phase4" class="back-link">← Phase 4</a>
       <a href="/phase3" class="back-link">Phase 3</a>
       <a href="/phase2" class="back-link">Phase 2</a>
